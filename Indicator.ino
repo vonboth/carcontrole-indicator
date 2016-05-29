@@ -95,9 +95,9 @@ void setup() {
 void loop() {
     time = millis();
 
-    int readLeft = digitalRead(BTN_LEFT);
-    int readRight = digitalRead(BTN_RIGHT);
-    int readWarning = digitalRead(BTN_WARNING);
+    int readBtnLeft = digitalRead(BTN_LEFT);
+    int readBtnRight = digitalRead(BTN_RIGHT);
+    int readBtnWarning = digitalRead(BTN_WARNING);
     int readPowerOn = digitalRead(ENGINE_ON);
 
     //when power down go to sleep
@@ -110,11 +110,11 @@ void loop() {
     count++;
 
     //handle the btn readings
-    if (readWarning == LOW && count % MODULO == 0) {
+    if (readBtnWarning == LOW && count % MODULO == 0) {
         indicatorState = (indicatorState == 0) ? 3 : 0;
-    } else if (readRight == LOW && count % MODULO == 0) {
+    } else if (readBtnRight == LOW && count % MODULO == 0) {
         indicatorState = (indicatorState == 0) ? 1 : 0;
-    } else if (readLeft == LOW && count % MODULO == 0) {
+    } else if (readBtnLeft == LOW && count % MODULO == 0) {
         indicatorState = (indicatorState == 0) ? 2 : 0;
     } else if (count % MODULO == 0) {
         indicatorState = 0;
@@ -123,7 +123,7 @@ void loop() {
     handleIndicatorState(indicatorState);
 
     //check, if power down and start sleep mode in next cycle
-    if (readPowerOn == LOW && enableSleep == 0 && readWarning == HIGH) {
+    if (readPowerOn == LOW && enableSleep == 0 && readBtnWarning == HIGH) {
         powerOffTime = time;
         enableSleep = 1;
     }
