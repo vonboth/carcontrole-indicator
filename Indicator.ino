@@ -7,6 +7,7 @@
 #define ENGINE_ON 3    //key switched power (12V)
 #define BTN_LEFT 4         //left indicator button
 #define BTN_RIGHT 5        //right indicator button
+#define BTN_WARN_LIGHT 6   //warning light from hazard button
 #define DELAY 100          //delay loop
 #define MODULO 5           //modulo: corresponds to delay and loop. Flash every 500 ms (100 * 5)
 #define SLEEP_TIME 10      //delay before Atmega goes to sleep [in minutes]
@@ -30,12 +31,14 @@ void handleIndicatorState(int state) {
         case 3:
             digitalWrite(INDICATOR_LEFT, HIGH);
             digitalWrite(INDICATOR_RIGHT, HIGH);
+            digitalWrite(BTN_WARN_LIGHT, HIGH);
             break;
 
         //all indicators off
         default:
             digitalWrite(INDICATOR_RIGHT, LOW);
             digitalWrite(INDICATOR_LEFT, LOW);
+            digitalWrite(BTN_WARN_LIGHT, LOW);
             break;
     }
 }
@@ -74,6 +77,7 @@ void setup() {
     //setup output pins
     pinMode(INDICATOR_RIGHT, OUTPUT);
     pinMode(INDICATOR_LEFT, OUTPUT);
+    pinMode(BTN_WARN_LIGHT, OUTPUT);
 
     //setup button pins
     pinMode(BTN_LEFT, INPUT);
