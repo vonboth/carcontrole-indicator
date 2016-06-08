@@ -4,13 +4,13 @@
 #define INDICATOR_RIGHT 12 //output pin for right indicator
 #define INDICATOR_LEFT 13  //output pin for left indicator
 #define BTN_WARNING 2      //btn pin for hazard switch
-#define ENGINE_ON 3    //key switched power (12V)
+#define ENGINE_ON 3        //key switched power (12V)
 #define BTN_LEFT 4         //left indicator button
 #define BTN_RIGHT 5        //right indicator button
-#define BTN_WARN_LIGHT 6   //warning light from hazard button
+#define BTN_WARN_LIGHT 7   //warning light from hazard button
 #define DELAY 100          //delay loop
 #define MODULO 5           //modulo: corresponds to delay and loop. Flash every 500 ms (100 * 5)
-#define SLEEP_TIME 10      //delay before Atmega goes to sleep [in minutes]
+#define SLEEP_TIME 120000  //delay before Atmega goes to sleep 2 * 60 * 1000 = 2 min
 
 /**
  * handle the different states for inidcator
@@ -91,9 +91,6 @@ void setup() {
     pinMode(ENGINE_ON, INPUT);
 
     handleIndicatorState(0);
-
-    attachInterrupt(0, wakeUp, LOW);  //wake up on interrupt 0 == PIN 2 == hazard button
-    attachInterrupt(1, wakeUp, HIGH); //wake up on interrupt 1 == PIN 3 == power switch
 }
 
 void loop() {
@@ -106,7 +103,7 @@ void loop() {
 
     //when power down go to sleep
     if (enableSleep == 1 && readPowerOn == LOW) {
-        if (time > (powerOffTime + (SLEEP_TIME * 60 * 1000))) {
+         if (time > (powerOffTime + SLEEP_TIME)) {
             gotoSleep();
         }
     }
@@ -120,14 +117,14 @@ void loop() {
         indicatorState = (indicatorState == 0) ? 1 : 0;
     } else if (readBtnLeft == LOW && count % MODULO == 0) {
         indicatorState = (indicatorState == 0) ? 2 : 0;
-    } else if (count % MODULO == 0) {
+    } else if (count % MODULO == 0) {  //no buttons pressed = turn off indicator gently
         indicatorState = 0;
     }
 
     handleIndicatorState(indicatorState);
 
     //check, if power down and start sleep mode in next cycle
-    if (readPowerOn == LOW && enableSleep == 0 && readBtnWarning == HIGH) {
+    if (enableSleep == 0 && readPowerOn == LOW && readBtnWarning == HIGH) {
         powerOffTime = time;
         enableSleep = 1;
     }
