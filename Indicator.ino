@@ -10,7 +10,7 @@
 #define BTN_WARN_LIGHT 7   //warning light from hazard button
 #define DELAY 100          //delay loop
 #define MODULO 5           //modulo: corresponds to delay and loop. Flash every 500 ms (100 * 5)
-#define SLEEP_TIME 120000  //delay before Atmega goes to sleep 2 * 60 * 1000 = 2 min
+#define SLEEP_TIME 60000  //delay before Atmega goes to sleep 2 * 60 * 1000 = 2 min
 
 /**
  * handle the different states for inidcator
@@ -106,6 +106,8 @@ void loop() {
          if (time > (powerOffTime + SLEEP_TIME)) {
             gotoSleep();
         }
+    } else if (enableSleep == 1 && readPowerOn == HIGH) {
+        enableSleep = 0;
     }
 
     count++;
