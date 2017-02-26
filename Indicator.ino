@@ -3,22 +3,41 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define INDICATOR_RIGHT 8 //output pin for right indicator
-#define INDICATOR_LEFT A0  //output pin for left indicator
-#define RFID_LED 0         //LED to indicate the
-#define BTN_WARNING 2      //btn pin for hazard switch
+#define INDICATOR_RIGHT 8    //output pin for right indicator
+#define INDICATOR_LEFT A0    //output pin for left indicator
+#define POWER_RFID_READER 0  //power out for RFID reader
+#define RFID_LED 1           //LED to indicate the
+#define BTN_WARNING 2        //btn pin for hazard switch
 #define IGNITION_ON 3        //key switched power (12V)
-#define BTN_LEFT 4         //left indicator button
-#define BTN_RIGHT 5        //right indicator button
-#define BTN_WARN_LIGHT 6   //warning light from hazard button
-#define ENABLE_START 7     //enables the start switch if RFID is correct
-#define RFID_RESET 9       //RFID reset pin
-#define RFID_SDA 10        //RFID SDA pin
+#define BTN_LEFT 4           //left indicator button
+#define BTN_RIGHT 5          //right indicator button
+#define BTN_WARN_LIGHT 6     //warning light from hazard button
+#define ENABLE_START 7       //enables the start switch if RFID is correct
+#define RFID_RESET 9         //RFID reset pin
+#define RFID_SDA 10          //RFID SDA pin
 
-#define DELAY 100          //delay loop
-#define MODULO 5           //modulo: corresponds to delay and loop. Flash every 500 ms (100 * 5)
-#define SLEEP_TIME 60000  //delay before Atmega goes to sleep 1 * 60 * 1000 = 1 min
+#define DELAY 100             //delay loop
+#define MODULO 5              //modulo: corresponds to delay and loop. Flash every 500 ms (100 * 5)
+#define SLEEP_TIME 60000      //delay before Atmega goes to sleep 1 * 60 * 1000 = 1 min
 #define RFID_READ_TIME 15000  //delay before Atmega goes to sleep 150 * 1000 = 15 sec
+#define RFID_BLINK_RATE 50    //blink every n/10 seconds e.g. 20 = 2 secs.
+
+//global variables
+int indicatorState = 0;      //current state of indicators 0 = all off
+unsigned int count = 0;      //counter to allow blinking
+long time = 0;               //holds the current time in millis
+long powerOffTime = 0;       //power off time in millis
+int ENABLE_SLEEP = false;    //flag to enable sleep mode
+int START_IS_BLOCKED = true; //block start initially TRUE
+int blockingState = 0;       //the current state of the blocking
+bool READING_DONE = false;   //global flag to indicate the reading happend once
+
+MFRC522 rfidReader(RFID_SDA, RFID_RESET); //initialise the RFID reader
+/*byte allowedRfids[2][] = { //holds an array of allowed RFIDs
+    {0x30, 0x8D, 0x1E, 0x83}, //ID 1 of a chip
+    {0x88, 0xD2, 0xF7, 0x78}  //ID 2 of a chip
+};*/
+byte sesam[] = {0x30, 0x8D, 0x1E, 0x83};
 
 /**
  * handle the different states for inidcator
@@ -52,17 +71,45 @@ void handleIndicatorState(int state) {
 }
 
 /**
- * test if the read uid is in the array of allowed id
+ * read from RFID Scanner
  */
-bool isAllowed(byte uid[4]) {
-    bool allowed = false;
-    for (int i = 0; i < sizeof(allowedRfids); i++) {
-        allowed = (rfidReader.uid.uidByte[0] == allowedRfids[i][0]) &&
-            (rfidReader.uid.uidByte[1] == allowedRfids[i][1]) &&
-            (rfidReader.uid.uidByte[2] == allowedRfids[i][2]) &&
-            (rfidReader.uid.uidByte[3] == allowedRfids[i][3])
+void readRfidTag() {
+    digitalWrite(RFID_LED, HIGH);
+    digitalWrite(POWER_RFID_READER, HIGH);
+    delay(500);
+    
+    READING_DONE = true;
+    bool CARD_SHOWED = false;
+    long current = millis();
+    long start = millis();
+    
+    while(current < (start + RFID_READ_TIME) && !CARD_SHOWED) { //read for RFID_READ_TIME
+        current = millis();
+        if ( rfidReader.PICC_IsNewCardPresent() && rfidReader.PICC_ReadCardSerial() ) {
+            if ( isRfidAllowed() ) {
+                digitalWrite(ENABLE_START, HIGH); //enable start switch
+                START_IS_BLOCKED = false; //ingnition no longer blocked
+            } else {
+                signalAccessDenied();
+                digitalWrite(RFID_LED, HIGH);
+            }
+            CARD_SHOWED = true;
+        }
     }
-    return allowed;
+    
+    digitalWrite(POWER_RFID_READER, LOW);
+    digitalWrite(RFID_LED, LOW);
+}
+
+/**
+ * test if the RF card is valid
+ */
+bool isRfidAllowed() {
+    return
+      (rfidReader.uid.uidByte[0] == sesam[0]) &&
+      (rfidReader.uid.uidByte[1] == sesam[1]) &&
+      (rfidReader.uid.uidByte[2] == sesam[2]) &&
+      (rfidReader.uid.uidByte[3] == sesam[3]);
 }
 
 /**
@@ -83,60 +130,38 @@ void signalAccessDenied() {
  * by reading RFID tag
  */
 void handleBlockingState(int state) {
+    
     switch(state) {
-        case 0: //ignition off && blocking active/true
-            if (count % 20 == 0) {
+        case 1: //ignition off && blocking is active/true
+            if (count % RFID_BLINK_RATE == 0) {
                 digitalWrite(RFID_LED, HIGH);
             } else if (count % 2 == 0) {
-                digitalWrite(RFID_LED, LOW)
+                digitalWrite(RFID_LED, LOW);
             }
             break;
 
-        case 1: //ignition on && blocking active/true
-            digitalWrite(RFID_LED, HIGH);
-            long current = millis();
-            long start = millis();
-            while(current < (start + RFID_READ_TIME) && BLOCK_START == 1) { //read for RFID_READ_TIME
-                current = millis();
-                if (rfidReader.PICC_IsNewCardPresent()) {
-                    if (allowedRfids(rfidReader.uid.uidByte)) {
-                        digitalWrite(ENABLE_START, HIGH); //enable start switch
-                        BLOCK_START = 0;
-                    } else {
-                        signalAccessDenied();
-                    }
-                }
-            }
+        case 2: //igntion on && blocking is inactive/false
+            digitalWrite(ENABLE_START, HIGH);
             digitalWrite(RFID_LED, LOW);
             break;
 
-        case 2: //ignition off && blocking inactive/false
+        case 3:
             digitalWrite(RFID_LED, HIGH);
-            digitalWrite(RFID_LED, LOW);
             break;
+
+        default: //ignition off && blocking active/true
+            digitalWrite(ENABLE_START, LOW);
+            digitalWrite(RFID_LED, LOW);
     }
 }
 
-int indicatorState = 0; //current state of indicators 0 = all off
-unsigned int count = 0; //counter to allow blinking
-long time = 0;          //time
-long powerOffTime = 0;  //power off time
-int enableSleep = 0;    //flag to enable sleep mode
-int BLOCK_START = 1;    //block start initially TRUE
-int flagRfidLooped = 0;
-int blockingState = 0;  //the current state of the blocking
-MFRC522 rfidReader(RFID_SDA, RFID_RESET); //initialise the RFID reader
-byte allowedRfids[2][4] = { //holds an array of allowed RFIDs
-    {0x, 0x, 0x, 0x}, //ID 1 of a chip
-    {0x, 0x, 0x, 0x}  //ID 2 of a chip
-};
 
 /**
  * wake up routine
  */
 void wakeUp() {
-  enableSleep = 0;
-  BLOCK_START = 1;
+  ENABLE_SLEEP = false;
+  START_IS_BLOCKED = true;
   handleIndicatorState(0);
   handleBlockingState(0);
 }
@@ -147,7 +172,7 @@ void wakeUp() {
 void gotoSleep() {
     indicatorState = 0;
     blockingState = 0;
-    BLOCK_START = 1;
+    START_IS_BLOCKED = true;
     handleIndicatorState(0);
     handleBlockingState(0);
 
@@ -166,6 +191,7 @@ void gotoSleep() {
  * setup the Board and the PINs
  */
 void setup() {
+    Serial.begin(9600);
     SPI.begin();
     rfidReader.PCD_Init();
     //setup output pins
@@ -174,6 +200,7 @@ void setup() {
     pinMode(BTN_WARN_LIGHT, OUTPUT);
 
     //immobiliser
+    pinMode(POWER_RFID_READER, OUTPUT);
     pinMode(ENABLE_START, OUTPUT);
     pinMode(RFID_LED, OUTPUT);
     digitalWrite(ENABLE_START, LOW); //disable START Pin, block start switch
@@ -203,21 +230,28 @@ void loop() {
     int ignitionState = digitalRead(IGNITION_ON);
 
     //when power down go to sleep
-    if (enableSleep == 1 && ignitionState == LOW) {
+    if (ENABLE_SLEEP && ignitionState == LOW) {
         if (time > (powerOffTime + SLEEP_TIME)) {
             gotoSleep();
         }
-    } else if (enableSleep == 1 && ignitionState == HIGH) {
-        enableSleep = 0;
+    } else if (ENABLE_SLEEP && ignitionState == HIGH) {
+        ENABLE_SLEEP = false;
     }
 
     //handle blocking of start switch
-    if (ignitionState == LOW && BLOCK_START == 1) {  //case if ignition off, initial start
-        blockingState = 0;
-    } else if (ignitionState == HIGH && BLOCK_START = 1) { //ingnition on, but start blocked, ready for RFID
-        blockingState = 1;
-    } else if (ignitionState == LOW && BLOCK_START == 0) { //engine ran and is switched off, blocking off
+    blockingState = 1;
+    if (ignitionState == LOW && READING_DONE) { //engine off = reset flags
+        READING_DONE = false;
+    }
+
+    if (ignitionState == HIGH && START_IS_BLOCKED) { //ingnition on, but start blocked, ready for RFID
+        if (!READING_DONE) {
+            readRfidTag();
+        }
+    } else if (ignitionState == HIGH && !START_IS_BLOCKED) { //ignition is on && start is not blocked == engine running mode
         blockingState = 2;
+    } else if (ignitionState == LOW && !START_IS_BLOCKED) {
+        blockingState = 3;
     }
 
     handleBlockingState(blockingState);
@@ -236,9 +270,9 @@ void loop() {
     handleIndicatorState(indicatorState);
 
     //check, if power down and start sleep mode in next cycle
-    if (enableSleep == 0 && ignitionState == LOW && readBtnWarning == HIGH) {
+    if (!ENABLE_SLEEP && ignitionState == LOW && readBtnWarning == HIGH) {
         powerOffTime = time;
-        enableSleep = 1;
+        ENABLE_SLEEP = true;
     }
 
     //delay
