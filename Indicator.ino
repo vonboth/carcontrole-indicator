@@ -3,7 +3,6 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define INDICATOR_RIGHT 8    //output pin for right indicator
 #define INDICATOR_LEFT A0    //output pin for left indicator
 #define POWER_RFID_READER 0  //power out for RFID reader
 #define RFID_LED 1           //LED to indicate the
@@ -13,6 +12,7 @@
 #define BTN_RIGHT 5          //right indicator button
 #define BTN_WARN_LIGHT 6     //warning light from hazard button
 #define ENABLE_START 7       //enables the start switch if RFID is correct
+#define INDICATOR_RIGHT 8    //output pin for right indicator
 #define RFID_RESET 9         //RFID reset pin
 #define RFID_SDA 10          //RFID SDA pin
 
@@ -32,12 +32,11 @@ int START_IS_BLOCKED = true; //block start initially TRUE
 int blockingState = 0;       //the current state of the blocking
 bool READING_DONE = false;   //global flag to indicate the reading happend once
 
-MFRC522 rfidReader(RFID_SDA, RFID_RESET); //initialise the RFID reader
-/*byte allowedRfids[2][] = { //holds an array of allowed RFIDs
-    {0x30, 0x8D, 0x1E, 0x83}, //ID 1 of a chip
-    {0x88, 0xD2, 0xF7, 0x78}  //ID 2 of a chip
-};*/
-byte sesam[] = {0x30, 0x8D, 0x1E, 0x83};
+MFRC522 rfidReader(RFID_SDA, RFID_RESET); //create && initialise the RFID reader
+byte allowedRfids[2][4] = { //holds an array of allowed RFIDs
+    {0x00, 0x00, 0x00, 0x00}, //ID 1 of a chip
+    {0x00, 0x00, 0x00, 0x00}  //ID 2 of a chip
+};
 
 /**
  * handle the different states for inidcator
@@ -74,42 +73,47 @@ void handleIndicatorState(int state) {
  * read from RFID Scanner
  */
 void readRfidTag() {
-    digitalWrite(RFID_LED, HIGH);
-    digitalWrite(POWER_RFID_READER, HIGH);
-    delay(500);
+    digitalWrite(POWER_RFID_READER, HIGH); //enable power for the reader
+    digitalWrite(RFID_LED, HIGH);          //set LED to high to indicate read mode
+    delay(500);                            //wait to allow the reader to settle
     
     READING_DONE = true;
     bool CARD_SHOWED = false;
-    long current = millis();
+    long currentTime = millis();
     long start = millis();
     
-    while(current < (start + RFID_READ_TIME) && !CARD_SHOWED) { //read for RFID_READ_TIME
-        current = millis();
+    while(currentTime < (start + RFID_READ_TIME) && !CARD_SHOWED) { //read for RFID_READ_TIME
+        currentTime = millis();
         if ( rfidReader.PICC_IsNewCardPresent() && rfidReader.PICC_ReadCardSerial() ) {
             if ( isRfidAllowed() ) {
                 digitalWrite(ENABLE_START, HIGH); //enable start switch
                 START_IS_BLOCKED = false; //ingnition no longer blocked
             } else {
-                signalAccessDenied();
-                digitalWrite(RFID_LED, HIGH);
+                signalAccessDenied(); //indicate that access was denied
             }
-            CARD_SHOWED = true;
+            CARD_SHOWED = true; //flag that a card was shown but not accepted
         }
     }
     
-    digitalWrite(POWER_RFID_READER, LOW);
-    digitalWrite(RFID_LED, LOW);
+    digitalWrite(POWER_RFID_READER, LOW); //disable the power for the reader
+    digitalWrite(RFID_LED, LOW);          //disable the LED to indicate end of read mode
 }
 
 /**
  * test if the RF card is valid
  */
 bool isRfidAllowed() {
-    return
-      (rfidReader.uid.uidByte[0] == sesam[0]) &&
-      (rfidReader.uid.uidByte[1] == sesam[1]) &&
-      (rfidReader.uid.uidByte[2] == sesam[2]) &&
-      (rfidReader.uid.uidByte[3] == sesam[3]);
+    bool allowed = 0;
+    int i = 0;
+    while( i < sizeof(allowedRfids) / sizeof (allowedRfids[0]) && !allowed ) {
+        allowed = (rfidReader.uid.uidByte[0] == allowedRfids[i][0]) &&
+            (rfidReader.uid.uidByte[1] == allowedRfids[i][1]) &&
+            (rfidReader.uid.uidByte[2] == allowedRfids[i][2]) &&
+            (rfidReader.uid.uidByte[3] == allowedRfids[i][3]);
+        
+        i = i + 1;
+    }
+    return allowed;
 }
 
 /**
@@ -191,7 +195,7 @@ void gotoSleep() {
  * setup the Board and the PINs
  */
 void setup() {
-    Serial.begin(9600);
+    //Serial.begin(9600);
     SPI.begin();
     rfidReader.PCD_Init();
     //setup output pins
@@ -201,6 +205,7 @@ void setup() {
 
     //immobiliser
     pinMode(POWER_RFID_READER, OUTPUT);
+    digitalWrite(POWER_RFID_READER, LOW);
     pinMode(ENABLE_START, OUTPUT);
     pinMode(RFID_LED, OUTPUT);
     digitalWrite(ENABLE_START, LOW); //disable START Pin, block start switch
