@@ -3,6 +3,15 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
+/**
+* MFRC522
+* RST: PIN 9
+* SDA: PIN 10
+* MOSI: PIN 11
+* MISO: PIN 12
+* SCK: PIN 13
+*/
+
 #define INDICATOR_LEFT A0    //output pin for left indicator
 #define POWER_RFID_READER 0  //power out for RFID reader
 #define RFID_LED 1           //LED to indicate the
